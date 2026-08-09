@@ -28,6 +28,37 @@ function clickByText(regex, tag = 'button,div,span,a') {
   return false;
 }
 
+// Klik tombol AKSI sungguhan (bukan teks paragraf). Hanya menyasar elemen yang
+// memang tombol: <button>, [role=button], input submit/button. Teks harus cocok
+// di AWAL (prefix) biar 'Lanjutkan' tidak salah kena kalimat deskripsi yang
+// kebetulan memuat kata 'lanjut'. Tombol aksi Google ada di kanan-bawah dan bisa
+// DI BAWAH fold → scrollIntoView dulu biar terlihat & bisa diklik.
+function clickButton(regex) {
+  const btns = document.querySelectorAll(
+    'button, [role="button"], input[type="submit"], input[type="button"]'
+  );
+  const candidates = [];
+  for (const el of btns) {
+    // visible? offsetParent null utk position:fixed, jadi cek rects juga
+    if (el.offsetParent === null && el.getClientRects().length === 0) continue;
+    if (el.disabled) continue;
+    const txt = (el.value || el.textContent || '').trim();
+    if (txt.length > 40) continue; // tombol aksi teksnya pendek, bukan paragraf
+    if (regex.test(txt.toLowerCase())) candidates.push(el);
+  }
+  if (!candidates.length) return false;
+  // pilih yang paling bawah (footer) — tombol positif Google ada di bawah-kanan
+  candidates.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+  const target = candidates[0];
+  target.scrollIntoView({ block: 'center' });
+  target.click();
+  console.log('[oauth-auto] klik tombol →', (target.value || target.textContent || '').trim().slice(0, 40));
+  return true;
+}
+
+// teks aksi positif consent, di-anchor di awal biar bukan paragraf
+const POSITIVE_BTN = /^(lanjutkan|lanjut|selanjutnya|teruskan|continue|next|allow|izinkan|mengizinkan|berikan akses|accept|setuju|terima|buka|go to)/i;
+
 // klik akun ke-N pada halaman chooser (urutan sesuai posisi di list)
 // Strategi bertingkat: DOM Google "Choose an account" berubah-ubah antar rilis,
 // jadi coba beberapa selektor sampai ketemu daftar akun yang bisa diklik.
@@ -108,18 +139,24 @@ async function autoRun() {
     await delay(1000);
   }
 
-  // 2) Halaman izin (consent) — centang semua + continue
+  // 2) Halaman izin (consent) — centang izin + klik tombol aksi positif
   if (host === 'oauth.sainskerta.net' || /consent/i.test(path) || location.origin.includes('google')) {
+    if (!running.active) return; // guard tetap
     await delay(1200);
-    // centang semua checkbox (expand "advanced" dulu jika perlu)
-    document.querySelectorAll('input[type="checkbox"]:not(:checked)').forEach((cb) => cb.click());
+    // centang semua checkbox izin (scroll ke view dulu biar ke-klik)
+    document.querySelectorAll('input[type="checkbox"]:not(:checked)').forEach((cb) => {
+      cb.scrollIntoView({ block: 'center' });
+      cb.click();
+    });
     await delay(500);
-    const advanced = clickByText(/selanjutnya|continue|advanced|lanjutan|lanjut|teruskan|belum memverifikasi/i);
-    await delay(700);
-    const allow = clickByText(/mengizinkan|izinkan|allow|berikan akses|buka |tidak aman|unsafe|continue to|go to/i);
-    if (!advanced && !allow) {
-      // mungkin butuh klik "expand more" — coba tombol umum
-      clickByText(/lanjut|next/i);
+    // klik tombol aksi sungguhan (bukan paragraf). scrollIntoView di clickButton
+    // menangani tombol 'Lanjutkan/Continue' yang berada di bawah fold.
+    const ok = clickButton(POSITIVE_BTN);
+    console.log('[oauth-auto] consent: klik tombol lanjut/izinkan →', ok);
+    if (!ok) {
+      // fallback: mungkin bukan <button> (link teks) → pakai clickByText lama
+      const fb = clickByText(/mengizinkan|izinkan|allow|berikan akses|lanjutkan|continue to|go to/i);
+      console.log('[oauth-auto] consent: fallback clickByText →', fb);
     }
   }
 }
