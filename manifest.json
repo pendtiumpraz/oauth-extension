@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "OAuth Batch Auto-Consent",
+  "version": "1.0.0",
+  "description": "Otomatis pilih akun Google yang sudah login, centang izin, Continue, dan kumpulkan URL localhost OAuth dari banyak akun ke satu file txt.",
+  "permissions": [
+    "storage",
+    "downloads",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://accounts.google.com/*",
+    "https://oauth.sainskerta.net/*",
+    "http://localhost:8080/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://accounts.google.com/*",
+        "https://oauth.sainskerta.net/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "OAuth Batch Auto-Consent"
+  }
+}

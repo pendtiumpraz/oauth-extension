@@ -1,0 +1,14 @@
+# Dependencies / build
+node_modules/
+dist/
+*.log
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Local OAuth tokens (JANGAN commit)
+token*.json
+*.token
+*.secret
