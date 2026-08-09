@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>OAuth Batch Console</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 12px; font-size: 13px; }
+    h1 { font-size: 14px; color: #fff; margin-bottom: 4px; }
+    .sub { font-size: 11px; color: #64748b; margin-bottom: 12px; }
+    .btnrow { display: flex; gap: 8px; margin-bottom: 12px; }
+    button { flex: 1; padding: 9px; border: 0; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    #startBtn { background: #2563eb; color: #fff; }
+    #startBtn.running { background: #059669; }
+    #stopBtn { background: #ef4444; color: #fff; }
+    #stopBtn:disabled { opacity: .4; cursor: not-allowed; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+    .field input { width: 100%; padding: 7px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #e2e8f0; font-size: 13px; }
+    .panel { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+    .panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #94a3b8; margin-bottom: 8px; }
+    #log { height: 120px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.5; color: #94a3b8; }
+    #log .ok { color: #34d399; }
+    #log .err { color: #f87171; }
+    #log .warn { color: #fbbf24; }
+    #codes { height: 90px; width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #a5b4fc; font-family: monospace; font-size: 11px; padding: 6px; resize: vertical; }
+    .btnrow2 { display: flex; gap: 8px; margin-top: 8px; }
+    .btnrow2 button { font-size: 12px; padding: 7px; }
+    .gray { background: #334155; color: #e2e8f0; }
+    .blue { background: #1d4ed8; color: #fff; }
+    .red2 { background: #7f1d1d; color: #fff; }
+    .count { font-size: 11px; color: #a5b4fc; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h1>🔐 OAuth Batch Console</h1>
+  <div class="sub">Kumpulkan kode OAuth dari banyak akun → paste ke OpenClaw</div>
+
+  <div class="btnrow">
+    <button id="startBtn">▶ Start</button>
+    <button id="stopBtn" disabled>⏹ Stop</button>
+  </div>
+
+  <div class="field">
+    <label for="total">Jumlah akun / tab</label>
+    <input type="number" id="total" min="1" max="30" value="10">
+  </div>
+
+  <div class="panel">
+    <h2>📜 Log</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="panel">
+    <h2>🔗 Kode Terkumpul</h2>
+    <textarea id="codes" placeholder="Kode OAuth akan muncul di sini..."></textarea>
+    <div class="btnrow2">
+      <button id="copyBtn" class="blue">📋 Copy</button>
+      <button id="saveBtn" class="gray">💾 Simpan .txt</button>
+      <button id="clearBtn" class="red2">🗑 Hapus</button>
+    </div>
+    <div class="count" id="count">0 kode</div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

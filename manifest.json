@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "OAuth Batch Auto-Consent",
-  "version": "1.0.0",
-  "description": "Otomatis pilih akun Google yang sudah login, centang izin, Continue, dan kumpulkan URL localhost OAuth dari banyak akun ke satu file txt.",
+  "version": "1.1.0",
+  "description": "Side panel: batch OAuth consent otomatis — pilih akun berurutan, centang izin, Continue, kumpulkan kode localhost, copy-paste ke OpenClaw. Punya Start/Stop trigger.",
   "permissions": [
     "storage",
-    "downloads",
-    "tabs"
+    "tabs",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://accounts.google.com/*",
@@ -26,8 +26,10 @@
       "run_at": "document_idle"
     }
   ],
+  "side_panel": {
+    "default_path": "panel.html"
+  },
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "OAuth Batch Auto-Consent"
+    "default_title": "OAuth Batch Console"
   }
 }

@@ -4,49 +4,19 @@
   <meta charset="UTF-8">
   <title>OAuth Batch</title>
   <style>
-    body { font-family: -apple-system, system-ui, sans-serif; width: 320px; margin: 0; padding: 16px; color: #1e293b; }
-    h1 { font-size: 15px; margin: 0 0 4px; color: #0f172a; }
-    p.sub { font-size: 12px; color: #64748b; margin: 0 0 14px; }
-    .row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-    label { font-size: 13px; }
-    select { flex: 1; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
-    button { width: 100%; padding: 9px; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 6px; }
-    .green { background: #2563eb; color: #fff; }
-    .amber { background: #f59e0b; color: #fff; }
-    .red { background: #ef4444; color: #fff; }
-    .count { font-size: 12px; color: #64748b; margin-top: 10px; }
-    .hint { font-size: 11px; color: #94a3b8; margin-top: 12px; line-height: 1.5; }
-    #urls { width: 100%; height: 70px; font-size: 11px; margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; box-sizing: border-box; color: #475569; }
+    body { font-family: system-ui, sans-serif; width: 240px; padding: 14px; color: #1e293b; }
+    h1 { font-size: 14px; margin: 0 0 10px; color: #0f172a; }
+    button { width: 100%; padding: 9px; border: 0; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .blue { background: #2563eb; color: #fff; margin-bottom: 8px; }
+    .note { font-size: 11px; color: #64748b; margin-top: 10px; line-height: 1.5; }
   </style>
 </head>
 <body>
-  <h1>🔐 OAuth Batch Auto-Consent</h1>
-  <p class="sub">Kumpulkan URL localhost OAuth dari banyak akun Google</p>
-
-  <div class="row">
-    <label for="mode">Mode:</label>
-    <select id="mode">
-      <option value="semi">Semi-Auto (pilih akun manual)</option>
-      <option value="auto">Auto (klik otomatis)</option>
-    </select>
+  <h1>🔐 OAuth Batch</h1>
+  <button id="openPanel" class="blue">📂 Buka Side Panel</button>
+  <div class="note">
+    Side panel berisi tombol Start/Stop, log, dan koleksi kode OAuth yang terkumpul. Buka panel dulu, lalu klik Start di sana.
   </div>
-
-  <button id="openUrl" class="green">Buka Link OAuth</button>
-  <button id="saveFile" class="amber">Simpan ke File (.txt)</button>
-  <button id="clear" class="red">Hapus Semua</button>
-
-  <div class="count">Terkumpul: <b id="count">0</b> URL</div>
-
-  <textarea id="urls" placeholder="URL kode akan muncul di sini..." readonly></textarea>
-
-  <div class="hint">
-    Cara pakai:<br>
-    1. Semua akun Google sudah login di browser ini<br>
-    2. Klik "Buka Link OAuth" → pilih akun → centang izin → Continue<br>
-    3. URL localhost:8080/?code=... otomatis tersimpan<br>
-    4. Ulangi untuk tiap akun, lalu "Simpan ke File"
-  </div>
-
   <script src="popup.js"></script>
 </body>
 </html>

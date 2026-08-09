@@ -1,68 +1,111 @@
 // OAuth Batch Auto-Consent - Background Service Worker
-// Menangkap URL redirect localhost:8080 dan menyimpan kode OAuth ke storage.
+// Mengelola state batch, membuka tab OAuth, menangkap kode localhost:8080,
+// dan menyimpan log + koleksi kode untuk ditampilkan di side panel.
 
-const STORAGE_KEY = 'oauthCodes';
+const STORAGE_KEY = '***';
+const LOG_KEY = '***';
+const RUNNING_KEY = '***';
 
-// Tangkap navigasi ke localhost:8080 (redirect OAuth)
-chrome.webNavigation?.onBeforeNavigate?.addListener?.((details) => {
-  if (details.url && details.url.startsWith('http://localhost:8080/')) {
-    saveCode(details.url);
-  }
-});
+const OAUTH_BASE = 'https://accounts.google.com/o/oauth2/auth?client_id=927010520463-kpk52iv51js1htnvfdoo8nrm5g23cub6.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2F&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.send+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.modify+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fspreadsheets&access_type=offline&prompt=consent';
 
-// Fallback: tangkap lewat tabs.onUpdated (lebih andal di many case)
+function get(key, def) {
+  return new Promise((res) => chrome.storage.local.get([key], (r) => res(r[key] ?? def)));
+}
+function set(key, val) {
+  return new Promise((res) => chrome.storage.local.set({ [key]: val }, res));
+}
+
+async function addLog(line, at = new Date().toLocaleTimeString()) {
+  const log = await get(LOG_KEY, []);
+  log.push(`[${at}] ${line}`);
+  if (log.length > 500) log.splice(0, log.length - 500);
+  await set(LOG_KEY, log);
+  broadcast('log');
+}
+
+function broadcast(what) {
+  try { chrome.runtime.sendMessage({ type: 'broadcast', what }).catch(() => {}); } catch {}
+}
+
+// ---------- TANGKAP KODE dari redirect localhost:8080 ----------
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url && changeInfo.url.startsWith('http://localhost:8080/')) {
-    saveCode(changeInfo.url);
+    captureCode(tabId, changeInfo.url);
+  }
+});
+chrome.webNavigation?.onBeforeNavigate?.addListener?.((details) => {
+  if (details.url && details.url.startsWith('http://localhost:8080/')) {
+    captureCode(details.tabId, details.url);
   }
 });
 
-function saveCode(fullUrl) {
+async function captureCode(tabId, fullUrl) {
   try {
-    const parsed = new URL(fullUrl);
-    const code = parsed.searchParams.get('code');
+    const code = new URL(fullUrl).searchParams.get('code');
     if (!code) return;
-
-    chrome.storage.local.get([STORAGE_KEY], (res) => {
-      const list = res[STORAGE_KEY] || [];
-      // Hindari duplikat
-      if (list.includes(fullUrl)) return;
-      list.push(fullUrl);
-      chrome.storage.local.set({ [STORAGE_KEY]: list });
-      console.log('[OAuth-Batch] Code saved:', code.slice(0, 20) + '...');
-    });
+    const list = await get(STORAGE_KEY, []);
+    if (list.includes(code)) return;
+    list.push(code);
+    await set(STORAGE_KEY, list);
+    await addLog(`Kode tertangkap (${list.length} total): ${short(code)}`);
+    // tutup tab redirect biar bersih
+    try { chrome.tabs.remove(tabId); } catch {}
+    // auto-stop jika sudah target tercapai
+    const running = await get(RUNNING_KEY, { active: false, total: 0, opened: 0 });
+    if (running.active && list.length >= running.total) {
+      running.active = false;
+      await set(RUNNING_KEY, running);
+      await addLog('✅ Batch SELSESAI — semua kode terkumpul.');
+    }
   } catch (e) {
-    console.error('[OAuth-Batch] Gagal parse URL:', e);
+    await addLog('Gagal tangkap kode: ' + e.message);
   }
 }
 
-// Handler pesan dari popup / content
+function short(c) { return c.length > 15 ? c.slice(0, 8) + '…' + c.slice(-6) : c; }
+
+// ---------- START / STOP ----------
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === 'getCodes') {
-    chrome.storage.local.get([STORAGE_KEY], (res) => {
-      sendResponse({ codes: res[STORAGE_KEY] || [] });
-    });
-    return true; // async
-  }
-  if (msg?.type === 'clearCodes') {
-    chrome.storage.local.set({ [STORAGE_KEY]: [] }, () => {
+  (async () => {
+    if (msg?.type === 'start') {
+      const total = Number(msg.total) || 10;
+      await set(RUNNING_KEY, { active: true, total, opened: 0 });
+      await set(STORAGE_KEY, []);
+      await addLog(`🚀 Start batch: buka ${total} tab OAuth...`);
+      // buka tab berurutan
+      for (let i = 0; i < total; i++) {
+        const running = await get(RUNNING_KEY, { active: true, total, opened: 0 });
+        if (!running.active) {
+          await addLog('⏹ Batch dihentikan user.');
+          break;
+        }
+        running.opened += 1;
+        await set(RUNNING_KEY, running);
+        chrome.tabs.create({ url: OAUTH_BASE, active: false });
+        await new Promise((r) => setTimeout(r, 700)); // jeda biar nggak kelihatan bot
+      }
       sendResponse({ ok: true });
-    });
-    return true;
-  }
-  if (msg?.type === 'saveAsFile') {
-    chrome.storage.local.get([STORAGE_KEY], (res) => {
-      const list = res[STORAGE_KEY] || [];
-      const content = list.join('\n');
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      chrome.downloads.download({
-        url,
-        filename: 'oauth-urls.txt',
-        saveAs: true
-      });
-      sendResponse({ ok: true, count: list.length });
-    });
-    return true;
-  }
+    }
+
+    else if (msg?.type === 'stop') {
+      await set(RUNNING_KEY, { active: false, total: 0, opened: 0 });
+      await addLog('⏹ Stop di-klik user.');
+      sendResponse({ ok: true });
+    }
+
+    else if (msg?.type === 'getState') {
+      const [codes, log, running] = await Promise.all([
+        get(STORAGE_KEY, []), get(LOG_KEY, []), get(RUNNING_KEY, { active: false, total: 0, opened: 0 })
+      ]);
+      sendResponse({ codes, log, running });
+    }
+
+    else if (msg?.type === 'clearCodes') {
+      await set(STORAGE_KEY, []);
+      await addLog('🗑 Kode dikosongkan.');
+      sendResponse({ ok: true });
+    }
+    else { sendResponse({ ok: false }); }
+  })();
+  return true;
 });

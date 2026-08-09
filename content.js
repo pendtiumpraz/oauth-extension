@@ -1,26 +1,23 @@
 // OAuth Batch Auto-Consent - Content Script
-// Berjalan di halaman Google (accounts.google.com) dan consent screen.
-// Mode AUTO (dari storage): pilih akun, centang izin, teruskan.
+// Berjalan di halaman Google (accounts.google.com / consent).
+// Mode AUTO: pilih akun berikutnya, centang izin, klik Continue.
+// Hanya aktif bila batch sedang running (di-trigger dari side panel).
 
-const SETTINGS_KEY = 'oauthSettings';
+const RUNNING_KEY = '***';
 
-function getSettings() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([SETTINGS_KEY], (res) => {
-      resolve(res[SETTINGS_KEY] || { mode: 'semi' });
-    });
+function getRunning() {
+  return new Promise((res) => {
+    chrome.storage.local.get([RUNNING_KEY], (r) => res(r[RUNNING_KEY] || { active: false }));
   });
 }
 
-function delay(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function clickByText(selectorRegex, tag = 'button,div,span,a') {
+function clickByText(regex, tag = 'button,div,span,a') {
   const els = document.querySelectorAll(tag);
   for (const el of els) {
     const txt = (el.textContent || '').trim().toLowerCase();
-    if (selectorRegex.test(txt) && el.offsetParent !== null) {
+    if (regex.test(txt) && el.offsetParent !== null) {
       el.click();
       return true;
     }
@@ -28,48 +25,64 @@ function clickByText(selectorRegex, tag = 'button,div,span,a') {
   return false;
 }
 
+// klik akun ke-N pada halaman chooser (urutan sesuai posisi di list)
+let clickCounter = 0;
+async function clickNthAccount(n) {
+  // Google chooser: daftar akun biasanya <li> dalam elemen dengan role listbox
+  const list = document.querySelectorAll('ul[role="listbox"] li, ul[role="listbox"] div[role="presentation"]');
+  if (list.length > 0) {
+    const idx = Math.min(n - 1, list.length - 1);
+    list[idx]?.click();
+    return true;
+  }
+  // fallback: cari elemen dengan data-identifier / akun
+  const acc = document.querySelectorAll('div[data-identifier]');
+  if (acc.length > 0) {
+    const idx = Math.min(n - 1, acc.length - 1);
+    acc[idx]?.click();
+    return true;
+  }
+  return false;
+}
+
 async function autoRun() {
-  const settings = await getSettings();
-  if (settings.mode !== 'auto') return; // semi-auto: hanya siapkan, user klik manual
+  const running = await getRunning();
+  if (!running.active) return; // hanya auto saat batch jalan
 
-  const url = location.href.toLowerCase();
+  const host = location.hostname;
+  const path = location.pathname;
 
-  // 1) Halaman "Choose an account" (accounts.google.com/signin/v2/identifier or chooser)
-  if (location.hostname === 'accounts.google.com') {
-    // Klik akun pertama yang tersedia
-    await delay(1200);
-    const li = document.querySelector('ul[role="listbox"] li, ul li[data-identifier]');
-    if (li) {
-      li.click();
-      console.log('[OAuth-Batch] Pilih akun:', li.getAttribute('data-identifier') || '');
-      return;
+  // 1) Halaman "Choose an account" (accounts.google.com)
+  if (host === 'accounts.google.com') {
+    await delay(1500);
+    const n = running.opened || 1; // gunakan urutan tab terbuka sebagai indeks akun
+    const okN = await clickNthAccount(n);
+    if (!okN) {
+      // fallback: akun pertama tersedia
+      clickByText(/masuk|sign in|akun/i);
     }
-    // Fallback: cari link/div akun
-    const acc = document.querySelector('div[data-identifier], div:nth-of-type(2) list-item');
-    if (acc) { acc.click(); return; }
+    await delay(1200);
+    // kadang muncul password/re-auth → biarkan user
   }
 
-  // 2) Halaman consent (oauth - "meminta akses")
-  // Centang semua checkbox izin
-  await delay(900);
-  document.querySelectorAll('input[type="checkbox"]:not(:checked)').forEach((cb) => {
-    cb.click();
-  });
-  await delay(400);
-
-  // 3) Klik tombol lanjut (Continue / Izinkan / Allow / Beralih akun)
-  const advanced = clickByText(/selanjutnya|continue|lanjut/i);
-  await delay(600);
-  const allow = clickByText(/mengizinkan|izinkan|allow|berikan akses/i);
-  if (advanced || allow) {
-    console.log('[OAuth-Batch] Klik lanjut/izinkan');
+  // 2) Halaman izin (consent) — centang semua + continue
+  if (host === 'oauth.sainskerta.net' || /consent/i.test(path) || location.origin.includes('google')) {
+    await delay(1200);
+    // centang semua checkbox (expand "advanced" dulu jika perlu)
+    document.querySelectorAll('input[type="checkbox"]:not(:checked)').forEach((cb) => cb.click());
+    await delay(500);
+    const advanced = clickByText(/selanjutnya|continue|advanced|lanjut|teruskan/i);
+    await delay(700);
+    const allow = clickByText(/mengizinkan|izinkan|allow|berikan akses|continue to/i);
+    if (!advanced && !allow) {
+      // mungkin butuh klik "expand more" — coba tombol umum
+      clickByText(/lanjut|next/i);
+    }
   }
 }
 
-// Jalankan setelah DOM siap + sedikit delay biar render
-setTimeout(() => { autoRun(); }, 1000);
-
-// Re-run untuk halaman SPA yang render lambat
+// Trigger saat DOM siap + setelah load (untuk SPA render ulang, coba berkala)
+setTimeout(() => { autoRun(); }, 1200);
 window.addEventListener('load', () => {
   setTimeout(() => { autoRun(); }, 2500);
 });
