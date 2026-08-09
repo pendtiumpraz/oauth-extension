@@ -2,9 +2,9 @@
 // Mengelola state batch, membuka tab OAuth, menangkap kode localhost:8080,
 // dan menyimpan log + koleksi kode untuk ditampilkan di side panel.
 
-const STORAGE_KEY = '***';
-const LOG_KEY = '***';
-const RUNNING_KEY = '***';
+const STORAGE_KEY = 'oauth_codes';
+const LOG_KEY = 'oauth_log';
+const RUNNING_KEY = 'oauth_running';
 
 const OAUTH_BASE = 'https://accounts.google.com/o/oauth2/auth?client_id=927010520463-kpk52iv51js1htnvfdoo8nrm5g23cub6.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2F&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.send+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.modify+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fspreadsheets&access_type=offline&prompt=consent';
 
@@ -90,7 +90,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       for (let i = 0; i < total; i++) {
         const running = await get(RUNNING_KEY, { active: true, total, opened: 0 });
         if (!running.active) {
-          await addLog('⏹ Batch dihentikan user.');
+          await addLog('⏹ Batch berhenti (stop / semua kode terkumpul).');
           break;
         }
         running.opened += 1;
