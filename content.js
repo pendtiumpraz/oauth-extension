@@ -29,23 +29,49 @@ function clickByText(regex, tag = 'button,div,span,a') {
 }
 
 // klik akun ke-N pada halaman chooser (urutan sesuai posisi di list)
-let clickCounter = 0;
+// Strategi bertingkat: DOM Google "Choose an account" berubah-ubah antar rilis,
+// jadi coba beberapa selektor sampai ketemu daftar akun yang bisa diklik.
+function findAccountElements() {
+  const strategies = [
+    // 1) elemen yang jelas menandai satu akun
+    'div[data-identifier], div[data-email], li[data-identifier], li[data-email]',
+    // 2) list akun sebagai listitem/link dalam listbox atau list
+    'ul[role="listbox"] li, [role="list"] [role="listitem"], [role="listbox"] [role="option"]',
+    // 3) tiap akun sebagai tombol/link (varian layout MV baru)
+    'div[role="link"], a[role="link"], li > div[jsaction], ul li[jsaction]',
+  ];
+  for (const sel of strategies) {
+    const found = Array.from(document.querySelectorAll(sel))
+      // hanya yang terlihat & bukan "Use another account" (tak punya email)
+      .filter((el) => el.offsetParent !== null);
+    if (found.length > 0) return found;
+  }
+  // 4) fallback terakhir: elemen apa pun yang teksnya memuat alamat email,
+  // ambil kontainer klik terdekat.
+  const byEmail = Array.from(document.querySelectorAll('div,li,a'))
+    .filter((el) => el.offsetParent !== null && /@[\w.-]+\.\w+/.test((el.textContent || '')))
+    // buang wadah besar: pilih yang paling "dalam" (teks pendek ~1 akun)
+    .filter((el) => (el.textContent || '').trim().length < 120);
+  return byEmail;
+}
+
 async function clickNthAccount(n) {
-  // Google chooser: daftar akun biasanya <li> dalam elemen dengan role listbox
-  const list = document.querySelectorAll('ul[role="listbox"] li, ul[role="listbox"] div[role="presentation"]');
-  if (list.length > 0) {
-    const idx = Math.min(n - 1, list.length - 1);
-    list[idx]?.click();
-    return true;
+  const list = findAccountElements();
+  if (list.length === 0) {
+    console.warn('[oauth-auto] clickNthAccount: tidak ada elemen akun ditemukan');
+    return false;
   }
-  // fallback: cari elemen dengan data-identifier / akun
-  const acc = document.querySelectorAll('div[data-identifier]');
-  if (acc.length > 0) {
-    const idx = Math.min(n - 1, acc.length - 1);
-    acc[idx]?.click();
-    return true;
+  const idx = Math.min(Math.max(n - 1, 0), list.length - 1);
+  const target = list[idx];
+  if (!target) {
+    console.warn('[oauth-auto] clickNthAccount: target indeks', idx, 'kosong dari', list.length);
+    return false;
   }
-  return false;
+  // klik target; jika target hanya wadah, klik juga anak yang clickable
+  const clickable = target.closest('[jsaction],[role="link"],[role="option"],[role="listitem"],li') || target;
+  clickable.click();
+  console.log('[oauth-auto] klik akun ke-' + n, '/', list.length, '→', (target.textContent || '').trim().slice(0, 60));
+  return true;
 }
 
 async function autoRun() {
