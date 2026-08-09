@@ -94,15 +94,29 @@ async function autoRun() {
     // kadang muncul password/re-auth → biarkan user
   }
 
+  // 1b) Layar peringatan "Google belum memverifikasi aplikasi ini"
+  //     Muncul sebelum consent. Perlu 2 langkah: (1) klik "Lanjutan/Advanced",
+  //     lalu (2) klik "Buka <App> (tidak aman)" / "Continue to..." / "Go to...".
+  if (/belum memverifikasi|hasn'?t verified|not verified/i.test(document.body.textContent || '')) {
+    if (!running.active) return; // guard tetap
+    await delay(800);
+    const adv = clickByText(/lanjutan|advanced/i);
+    console.log('[oauth-auto] warning: klik Lanjutan/Advanced →', adv);
+    await delay(900);
+    const go = clickByText(/buka |tidak aman|unsafe|continue to|go to/i);
+    console.log('[oauth-auto] warning: klik Buka/Continue/Go →', go);
+    await delay(1000);
+  }
+
   // 2) Halaman izin (consent) — centang semua + continue
   if (host === 'oauth.sainskerta.net' || /consent/i.test(path) || location.origin.includes('google')) {
     await delay(1200);
     // centang semua checkbox (expand "advanced" dulu jika perlu)
     document.querySelectorAll('input[type="checkbox"]:not(:checked)').forEach((cb) => cb.click());
     await delay(500);
-    const advanced = clickByText(/selanjutnya|continue|advanced|lanjut|teruskan/i);
+    const advanced = clickByText(/selanjutnya|continue|advanced|lanjutan|lanjut|teruskan|belum memverifikasi/i);
     await delay(700);
-    const allow = clickByText(/mengizinkan|izinkan|allow|berikan akses|continue to/i);
+    const allow = clickByText(/mengizinkan|izinkan|allow|berikan akses|buka |tidak aman|unsafe|continue to|go to/i);
     if (!advanced && !allow) {
       // mungkin butuh klik "expand more" — coba tombol umum
       clickByText(/lanjut|next/i);
