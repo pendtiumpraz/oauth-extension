@@ -30,6 +30,7 @@
     "default_path": "panel.html"
   },
   "action": {
-    "default_title": "OAuth Batch Console"
+    "default_title": "OAuth Batch Console",
+    "default_icon": {}
   }
 }

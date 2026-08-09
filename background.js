@@ -27,6 +27,20 @@ function broadcast(what) {
   try { chrome.runtime.sendMessage({ type: 'broadcast', what }).catch(() => {}); } catch {}
 }
 
+// ---------- KLIK IKON EXTENSION -> LANGSUNG BUKA SIDE PANEL ----------
+chrome.runtime.onInstalled.addListener(() => {
+  // openPanelOnActionClick: klik icon selalu buka side panel
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+});
+
+// Jalankan juga saat startup biar dijamin aktif
+chrome.runtime.onStartup?.addListener?.(() => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+});
+
+// Fallback: pastikan behavior tetap set tiap kali service worker bangun
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
 // ---------- TANGKAP KODE dari redirect localhost:8080 ----------
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url && changeInfo.url.startsWith('http://localhost:8080/')) {
