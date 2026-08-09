@@ -3,7 +3,10 @@
 // Mode AUTO: pilih akun berikutnya, centang izin, klik Continue.
 // Hanya aktif bila batch sedang running (di-trigger dari side panel).
 
-const RUNNING_KEY = '***';
+// WAJIB: key ini harus SAMA dengan background.js (oauth_running),
+// bukan literal lain. Kalau beda, content script tidak akan melihat
+// status running dan auto-klik tidak pernah berjalan.
+const RUNNING_KEY = 'oauth_running';
 
 function getRunning() {
   return new Promise((res) => {
