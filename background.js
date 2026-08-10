@@ -55,22 +55,57 @@ chrome.webNavigation?.onBeforeNavigate?.addListener?.((details) => {
 
 function codeOf(url) { try { return new URL(url).searchParams.get('code'); } catch { return null; } }
 
+// ---------- SEQUENTIAL: satu tab aktif pada satu waktu ----------
+// pendingTab = tab OAuth yang sedang ditunggu code-nya. Loop start() menunggu
+// promise ini resolve (code tertangkap / tab ditutup / timeout) sebelum buka tab berikutnya.
+let pendingTab = null; // { tabId, authuser, resolve }
+
+function resolvePending(tabId, reason) {
+  if (pendingTab && pendingTab.tabId === tabId) {
+    const done = pendingTab.resolve;
+    pendingTab = null;
+    done(reason);
+  }
+}
+
+// Tab OAuth ditutup manual sebelum code tertangkap → lanjut ke tab berikutnya.
+chrome.tabs.onRemoved.addListener((tabId) => resolvePending(tabId, 'closed'));
+
+function waitForTab(tabId, authuser) {
+  return new Promise((resolve) => {
+    pendingTab = { tabId, authuser, resolve };
+    // ponytail: safety timeout 120s supaya satu tab yg nyangkut tidak membekukan seluruh batch.
+    // Upgrade path: persistent alarm-based state machine kalau worker MV3 ke-restart di tengah batch.
+    setTimeout(() => resolvePending(tabId, 'timeout'), 120000);
+  });
+}
+
 async function captureCode(tabId, fullUrl) {
   try {
     // Simpan URL callback LENGKAP (iss, code, scope, dll) — bukan hanya code.
     const code = codeOf(fullUrl);
     if (!code) return;
+    const reqAuthUser = pendingTab && pendingTab.tabId === tabId ? pendingTab.authuser : null;
     const list = await get(STORAGE_KEY, []);
     // Cegah duplikat: tolak jika code (dari URL manapun) sudah ada — indikasi akun dobel.
     if (list.some((u) => codeOf(u) === code)) {
-      await addLog(`⚠ Akun dobel — code sama, tab diabaikan: ${short(code)}`);
+      await addLog(`⚠ Akun dobel — code sama, tab diabaikan${reqAuthUser != null ? ` (authuser=${reqAuthUser})` : ''}: ${short(code)}`);
+      resolvePending(tabId, 'duplicate');
       try { chrome.tabs.remove(tabId); } catch {}
       return;
     }
     list.push(fullUrl);
     await set(STORAGE_KEY, list);
     await addLog(`URL callback tertangkap (${list.length} total): ${shortUrl(fullUrl)}`);
-    // tutup tab redirect biar bersih
+    // Best-effort: cek authuser yang diminta memang muncul di URL callback (kalau ada).
+    if (reqAuthUser != null) {
+      const gotAuthUser = new URL(fullUrl).searchParams.get('authuser');
+      if (gotAuthUser != null && gotAuthUser !== String(reqAuthUser)) {
+        await addLog(`⚠ authuser tidak sesuai — diminta ${reqAuthUser}, dapat ${gotAuthUser}.`);
+      }
+    }
+    // tab berikutnya baru dibuka setelah ini resolve; tutup tab redirect biar bersih.
+    resolvePending(tabId, 'captured');
     try { chrome.tabs.remove(tabId); } catch {}
     // auto-stop jika sudah target tercapai
     const running = await get(RUNNING_KEY, { active: false, total: 0, opened: 0 });
@@ -81,6 +116,7 @@ async function captureCode(tabId, fullUrl) {
     }
   } catch (e) {
     await addLog('Gagal tangkap URL: ' + e.message);
+    resolvePending(tabId, 'error');
   }
 }
 
@@ -94,21 +130,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const total = Number(msg.total) || 10;
       await set(RUNNING_KEY, { active: true, total, opened: 0 });
       await set(STORAGE_KEY, []);
-      await addLog(`🚀 Start batch: buka ${total} tab OAuth...`);
-      // buka tab berurutan
+      await addLog(`🚀 Start batch SEQUENTIAL: ${total} akun (authuser 0..${total - 1}), satu tab per akun.`);
+      sendResponse({ ok: true }); // balas dulu; loop jalan async agar panel tidak menunggu.
+      // Buka tab SATU PER SATU: tunggu code tertangkap / tab ditutup dulu, baru buka berikutnya.
+      // active:true supaya halaman pilih-akun & consent muncul normal dan flow Google tidak saling menimpa.
       for (let i = 0; i < total; i++) {
-        const running = await get(RUNNING_KEY, { active: true, total, opened: 0 });
+        let running = await get(RUNNING_KEY, { active: true, total, opened: 0 });
         if (!running.active) {
           await addLog('⏹ Batch berhenti (stop / semua kode terkumpul).');
           break;
         }
-        running.opened += 1;
+        running.opened = i + 1;
         await set(RUNNING_KEY, running);
-        // authuser bertambah per tab (tab ke-n → authuser=n-1) supaya tiap tab menarget akun berbeda.
-        chrome.tabs.create({ url: `${OAUTH_BASE}&authuser=${i}`, active: false });
-        await new Promise((r) => setTimeout(r, 700)); // jeda biar nggak kelihatan bot
+        // Tab ke-(i+1) → authuser=i, jadi tiap tab menarget akun berbeda (tidak pernah dobel dalam 1 batch).
+        const tab = await chrome.tabs.create({ url: `${OAUTH_BASE}&authuser=${i}`, active: true });
+        await addLog(`▶ Tab ${i + 1}/${total} dibuka (authuser=${i}) — menunggu code...`);
+        const reason = await waitForTab(tab.id, i);
+        await addLog(`… Tab ${i + 1}/${total} selesai (${reason}).`);
+        // Auto-stop bisa memmatikan batch saat code terakhir masuk.
+        running = await get(RUNNING_KEY, { active: false, total: 0, opened: 0 });
+        if (!running.active) break;
+        // Jeda cukup agar flow Google tab sebelumnya benar-benar selesai sebelum buka tab berikutnya.
+        if (i < total - 1) await new Promise((r) => setTimeout(r, 1800));
       }
-      sendResponse({ ok: true });
+      return;
     }
 
     else if (msg?.type === 'stop') {
