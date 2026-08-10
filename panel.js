@@ -22,7 +22,7 @@ function render(log, codes, running) {
   logEl.scrollTop = logEl.scrollHeight; // auto-scroll
 
   codesEl.value = codes.join('\n');
-  countEl.textContent = codes.length + ' kode';
+  countEl.textContent = codes.length + ' URL';
 
   startBtn.textContent = running.active ? '⏳ Berjalan…' : '▶ Start';
   startBtn.classList.toggle('running', running.active);
@@ -63,7 +63,7 @@ $('saveBtn').addEventListener('click', () => {
     const blob = new Blob([codes.join('\n')], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'oauth-codes.txt'; a.click();
+    a.href = url; a.download = 'oauth-callback-urls.txt'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
 });

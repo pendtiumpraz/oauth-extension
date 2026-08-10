@@ -6,7 +6,7 @@ const STORAGE_KEY = 'oauth_codes';
 const LOG_KEY = 'oauth_log';
 const RUNNING_KEY = 'oauth_running';
 
-const OAUTH_BASE = 'https://accounts.google.com/o/oauth2/auth?client_id=927010520463-kpk52iv51js1htnvfdoo8nrm5g23cub6.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2F&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.send+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.modify+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fspreadsheets&access_type=offline&prompt=consent';
+const OAUTH_BASE = 'https://accounts.google.com/o/oauth2/auth?client_id=927010520463-kpk52iv51js1htnvfdoo8nrm5g23cub6.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2F&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.readonly+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.send+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.modify+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fspreadsheets&access_type=offline&prompt=select_account%20consent';
 
 function get(key, def) {
   return new Promise((res) => chrome.storage.local.get([key], (r) => res(r[key] ?? def)));
@@ -53,15 +53,23 @@ chrome.webNavigation?.onBeforeNavigate?.addListener?.((details) => {
   }
 });
 
+function codeOf(url) { try { return new URL(url).searchParams.get('code'); } catch { return null; } }
+
 async function captureCode(tabId, fullUrl) {
   try {
-    const code = new URL(fullUrl).searchParams.get('code');
+    // Simpan URL callback LENGKAP (iss, code, scope, dll) — bukan hanya code.
+    const code = codeOf(fullUrl);
     if (!code) return;
     const list = await get(STORAGE_KEY, []);
-    if (list.includes(code)) return;
-    list.push(code);
+    // Cegah duplikat: tolak jika code (dari URL manapun) sudah ada — indikasi akun dobel.
+    if (list.some((u) => codeOf(u) === code)) {
+      await addLog(`⚠ Akun dobel — code sama, tab diabaikan: ${short(code)}`);
+      try { chrome.tabs.remove(tabId); } catch {}
+      return;
+    }
+    list.push(fullUrl);
     await set(STORAGE_KEY, list);
-    await addLog(`Kode tertangkap (${list.length} total): ${short(code)}`);
+    await addLog(`URL callback tertangkap (${list.length} total): ${shortUrl(fullUrl)}`);
     // tutup tab redirect biar bersih
     try { chrome.tabs.remove(tabId); } catch {}
     // auto-stop jika sudah target tercapai
@@ -69,14 +77,15 @@ async function captureCode(tabId, fullUrl) {
     if (running.active && list.length >= running.total) {
       running.active = false;
       await set(RUNNING_KEY, running);
-      await addLog('✅ Batch SELSESAI — semua kode terkumpul.');
+      await addLog('✅ Batch SELESAI — semua URL callback terkumpul.');
     }
   } catch (e) {
-    await addLog('Gagal tangkap kode: ' + e.message);
+    await addLog('Gagal tangkap URL: ' + e.message);
   }
 }
 
 function short(c) { return c.length > 15 ? c.slice(0, 8) + '…' + c.slice(-6) : c; }
+function shortUrl(u) { return u.length > 90 ? u.slice(0, 55) + '…' + u.slice(-25) : u; }
 
 // ---------- START / STOP ----------
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -95,7 +104,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         running.opened += 1;
         await set(RUNNING_KEY, running);
-        chrome.tabs.create({ url: OAUTH_BASE, active: false });
+        // authuser bertambah per tab (tab ke-n → authuser=n-1) supaya tiap tab menarget akun berbeda.
+        chrome.tabs.create({ url: `${OAUTH_BASE}&authuser=${i}`, active: false });
         await new Promise((r) => setTimeout(r, 700)); // jeda biar nggak kelihatan bot
       }
       sendResponse({ ok: true });
