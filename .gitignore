@@ -12,3 +12,6 @@ dist/
 token*.json
 *.token
 *.secret
+
+# Dokumen internal prompting (bukan bagian extension)
+REVISION-PROMPT*.md
