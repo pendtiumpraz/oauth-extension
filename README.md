@@ -13,7 +13,7 @@ Yang disimpan adalah **URL callback utuh** (query string lengkap: `iss`, `code`,
 - 🔁 **Sequential — 10 tab = 10 akun beda** — tab dibuka **satu per satu** (bukan bareng). Extension menunggu code tertangkap / tab ditutup dulu, baru buka tab berikutnya. Ini mencegah race condition cookie/session Google yang bikin banyak tab collapse ke akun aktif yang sama
 - 🧑‍🤝‍🧑 **Multi-akun paksa** — `prompt=select_account consent` + `authuser=N` per tab, jadi tiap tab menarget akun berbeda (tab ke-n → `authuser=n-1`, dijamin `authuser` 0..total-1 tanpa dobel), bukan me-reuse akun aktif
 - 🚫 **Anti-duplikat** — URL dengan `code` yang sama ditolak + di-log sebagai peringatan akun dobel
-- 🖱️ **Auto-klik** — pilih akun berurutan (sesuai urutan tab), centang izin, klik Continue
+- 🖱️ **Auto-klik consent** — centang izin + klik Continue di halaman consent/warning. **Pemilihan akun bukan lewat klik** melainkan lewat `authuser=N` (background.js); content script tidak auto-klik akun di halaman chooser agar tidak bentrok dengan authuser
 - 🛡️ **Aman** — tidak menyimpan password, hanya memakai akun yang sudah login di browser
 
 ## Cara Install (Developer Mode)
@@ -29,8 +29,8 @@ Yang disimpan adalah **URL callback utuh** (query string lengkap: `iss`, `code`,
 2. Buka **side panel** extension
 3. Isi **jumlah akun/tab**, lalu klik **▶ Start**
 4. Extension buka tab OAuth **satu per satu** (`authuser=0`, lalu `1`, dst — fokus/aktif); tiap tab:
-   - Pilih akun ke-n (urutan) otomatis
-   - Centang semua izin + klik Continue
+   - Akun ke-n dipilih otomatis lewat `authuser=n-1` (bukan auto-klik di chooser)
+   - Centang semua izin + klik Continue di halaman consent
    - Redirect ke `localhost:8080/?iss=...&code=...&scope=...` → **URL callback lengkap** tertangkap
    - Setelah code tertangkap (atau tab ditutup), extension jeda ±1.8 detik lalu buka tab akun berikutnya. Tidak ada dua tab berjalan bersamaan → tidak ada race condition, `authuser` dijamin 0..N-1
 5. Pantau **log** & **koleksi URL callback** di side panel
@@ -49,7 +49,7 @@ Yang disimpan adalah **URL callback utuh** (query string lengkap: `iss`, `code`,
 ```
 manifest.json   - MV3, permissions sidePanel/storage/tabs
 background.js   - State batch, buka tab, tangkap kode, log
-content.js      - Auto-klik akun, centang izin, continue (di halaman Google)
+content.js      - Auto-consent: centang izin + Continue (akun via authuser, bukan klik)
 panel.html/js   - Side panel UI (Start/Stop, log, koleksi kode)
 popup.html/js   - Tombol buka side panel
 ```

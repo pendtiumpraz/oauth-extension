@@ -59,6 +59,16 @@ function clickButton(regex) {
 // teks aksi positif consent, di-anchor di awal biar bukan paragraf
 const POSITIVE_BTN = /^(lanjutkan|lanjut|selanjutnya|teruskan|continue|next|allow|izinkan|mengizinkan|berikan akses|accept|setuju|terima|buka|go to)/i;
 
+// Halaman ini benar-benar chooser "Choose an account"? Auto-klik akun HANYA
+// boleh di sini. Di halaman consent/warning tidak ada daftar akun (akun sudah
+// dipilih via authuser=N oleh background.js) → jangan cari/klik akun.
+function isChooserPage() {
+  const p = location.pathname;
+  if (/signin\/(v\d+\/)?identifier|signin\/oauth\/identifier|accountchooser/i.test(p)) return true;
+  if (/signin\/oauth\/consent|\/consent/i.test(p)) return false; // consent bukan chooser
+  return !!document.querySelector('div[data-identifier], div[data-email], li[data-identifier], li[data-email]');
+}
+
 // klik akun ke-N pada halaman chooser (urutan sesuai posisi di list)
 // Strategi bertingkat: DOM Google "Choose an account" berubah-ubah antar rilis,
 // jadi coba beberapa selektor sampai ketemu daftar akun yang bisa diklik.
@@ -86,23 +96,24 @@ function findAccountElements() {
   return byEmail;
 }
 
+// Null-guard total: tidak pernah throw. Semua jalur gagal → return false.
 async function clickNthAccount(n) {
-  const list = findAccountElements();
-  if (list.length === 0) {
-    console.warn('[oauth-auto] clickNthAccount: tidak ada elemen akun ditemukan');
+  try {
+    const list = findAccountElements();
+    if (!list || list.length === 0) return false;
+    const idx = Math.min(Math.max(n - 1, 0), list.length - 1);
+    const target = list[idx];
+    if (!target || typeof target.closest !== 'function') return false;
+    const clickable = target.closest('[jsaction],[role="link"],[role="option"],[role="listitem"],li');
+    const el = (clickable && typeof clickable.click === 'function') ? clickable : target;
+    if (!el || typeof el.click !== 'function') return false;
+    el.click();
+    console.log('[oauth-auto] klik akun ke-' + n, '/', list.length, '→', (target.textContent || '').trim().slice(0, 60));
+    return true;
+  } catch (e) {
+    console.warn('[oauth-auto] clickNthAccount error:', e.message);
     return false;
   }
-  const idx = Math.min(Math.max(n - 1, 0), list.length - 1);
-  const target = list[idx];
-  if (!target) {
-    console.warn('[oauth-auto] clickNthAccount: target indeks', idx, 'kosong dari', list.length);
-    return false;
-  }
-  // klik target; jika target hanya wadah, klik juga anak yang clickable
-  const clickable = target.closest('[jsaction],[role="link"],[role="option"],[role="listitem"],li') || target;
-  clickable.click();
-  console.log('[oauth-auto] klik akun ke-' + n, '/', list.length, '→', (target.textContent || '').trim().slice(0, 60));
-  return true;
 }
 
 async function autoRun() {
@@ -113,16 +124,12 @@ async function autoRun() {
   const path = location.pathname;
 
   // 1) Halaman "Choose an account" (accounts.google.com)
-  if (host === 'accounts.google.com') {
+  //    Akun sudah ditentukan oleh background.js via authuser=N, jadi JANGAN
+  //    auto-klik akun (klik ganda bisa bentrok dgn authuser & bikin 403).
+  //    Cukup log; hanya di halaman chooser sungguhan.
+  if (host === 'accounts.google.com' && isChooserPage()) {
     await delay(1500);
-    const n = running.opened || 1; // gunakan urutan tab terbuka sebagai indeks akun
-    const okN = await clickNthAccount(n);
-    if (!okN) {
-      // fallback: akun pertama tersedia
-      clickByText(/masuk|sign in|akun/i);
-    }
-    await delay(1200);
-    // kadang muncul password/re-auth → biarkan user
+    console.log('[oauth-auto] chooser: akun dipilih via authuser, skip auto-klik');
   }
 
   // 1b) Layar peringatan "Google belum memverifikasi aplikasi ini"
@@ -139,8 +146,10 @@ async function autoRun() {
     await delay(1000);
   }
 
-  // 2) Halaman izin (consent) — centang izin + klik tombol aksi positif
-  if (host === 'oauth.sainskerta.net' || /consent/i.test(path) || location.origin.includes('google')) {
+  // 2) Halaman izin (consent) — centang izin + klik tombol aksi positif.
+  //    JANGAN clickNthAccount di sini. Hanya di halaman consent sungguhan
+  //    (bukan semua halaman google, biar tidak salah-tembak di chooser).
+  if (host === 'oauth.sainskerta.net' || /consent/i.test(path)) {
     if (!running.active) return; // guard tetap
     await delay(1200);
     // centang semua checkbox izin (scroll ke view dulu biar ke-klik)
@@ -161,8 +170,17 @@ async function autoRun() {
   }
 }
 
+// autoRun tidak boleh menggagalkan script — bungkus semua error.
+function safeAutoRun() {
+  try {
+    autoRun().catch((e) => console.warn('[oauth-auto] autoRun rejected:', e && e.message));
+  } catch (e) {
+    console.warn('[oauth-auto] autoRun threw:', e && e.message);
+  }
+}
+
 // Trigger saat DOM siap + setelah load (untuk SPA render ulang, coba berkala)
-setTimeout(() => { autoRun(); }, 1200);
+setTimeout(safeAutoRun, 1200);
 window.addEventListener('load', () => {
-  setTimeout(() => { autoRun(); }, 2500);
+  setTimeout(safeAutoRun, 2500);
 });
